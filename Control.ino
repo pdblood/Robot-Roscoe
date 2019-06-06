@@ -51,33 +51,35 @@ float positionPDControl(long actualPos, long setPointPos, float Kpp, float Kdp, 
   return (output);
 }
 
+//PDB: Need to change this to a Due Timer
 // TIMER 1 : STEPPER MOTOR1 SPEED CONTROL
 ISR(TIMER1_COMPA_vect)
 {
   if (dir_M1 == 0) // If we are not moving we dont generate a pulse
     return;
   // We generate 1us STEP pulse
-  SET(PORTE, 6); // STEP MOTOR 1
+  SET(PORTB, 25); // STEP MOTOR 1
   //delay_1us();
   if (dir_M1 > 0)
     steps1--;
   else
     steps1++;
-  CLR(PORTE, 6);
+  CLR(PORTB, 25);
 }
+//PDB: Change to a Due Timer
 // TIMER 3 : STEPPER MOTOR2 SPEED CONTROL
 ISR(TIMER3_COMPA_vect)
 {
   if (dir_M2 == 0) // If we are not moving we dont generate a pulse
     return;
   // We generate 1us STEP pulse
-  SET(PORTD, 6); // STEP MOTOR 2
+  SET(PORTC, 28); // STEP MOTOR 2
   //delay_1us();
   if (dir_M2 > 0)
     steps2--;
   else
     steps2++;
-  CLR(PORTD, 6);
+  CLR(PORTC, 28);
 }
 
 
@@ -98,7 +100,9 @@ void setMotorSpeedM1(int16_t tspeed)
   else
     speed_M1 = tspeed;
 
-#if MICROSTEPPING==16
+#if MICROSTEPPING==32
+  speed = speed_M1 * 100; // Adjust factor from control output speed to real motor speed in steps/second
+#elif MICROSTEPPING==16
   speed = speed_M1 * 50; // Adjust factor from control output speed to real motor speed in steps/second
 #else
   speed = speed_M1 * 25; // 1/8 Microstepping
@@ -111,15 +115,15 @@ void setMotorSpeedM1(int16_t tspeed)
   }
   else if (speed > 0)
   {
-    timer_period = 2000000 / speed; // 2Mhz timer
+    timer_period = 2000000 / speed; // 2Mhz timer //PDB change for Due
     dir_M1 = 1;
-    SET(PORTB, 4); // DIR Motor 1 (Forward)
+    SET(PORTC, 25); // DIR Motor 1 (Forward)
   }
   else
   {
-    timer_period = 2000000 / -speed;
+    timer_period = 2000000 / -speed; //PDB change for Due
     dir_M1 = -1;
-    CLR(PORTB, 4); // Dir Motor 1
+    CLR(PORTC, 25); // Dir Motor 1
   }
   if (timer_period > 65535)   // Check for minimun speed (maximun period without overflow)
     timer_period = ZERO_SPEED;
@@ -147,7 +151,9 @@ void setMotorSpeedM2(int16_t tspeed)
   else
     speed_M2 = tspeed;
 
-#if MICROSTEPPING==16
+#if MICROSTEPPING==32
+  speed = speed_M2 * 100; // Adjust factor from control output speed to real motor speed in steps/second
+#elif MICROSTEPPING==16
   speed = speed_M2 * 50; // Adjust factor from control output speed to real motor speed in steps/second
 #else
   speed = speed_M2 * 25; // 1/8 Microstepping
@@ -162,13 +168,13 @@ void setMotorSpeedM2(int16_t tspeed)
   {
     timer_period = 2000000 / speed; // 2Mhz timer
     dir_M2 = 1;
-    CLR(PORTC, 6);   // Dir Motor2 (Forward)
+    CLR(PORTC, 24);   // Dir Motor2 (Forward)
   }
   else
   {
     timer_period = 2000000 / -speed;
     dir_M2 = -1;
-    SET(PORTC, 6);  // DIR Motor 2
+    SET(PORTC, 24);  // DIR Motor 2
   }
   if (timer_period > 65535)   // Check for minimun speed (maximun period without overflow)
     timer_period = ZERO_SPEED;

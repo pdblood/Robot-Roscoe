@@ -53,7 +53,7 @@
 //#define WIFI_IP "192.168.1.101"  // Force ROBOT IP
 //#define TELEMETRY "192.168.1.38" // Tlemetry server port 2223
 
-#define TELEMETRY "192.168.4.2" // Default telemetry server (first client) port 2223
+//PDB #define TELEMETRY "192.168.4.2" // Default telemetry server (first client) port 2223
 
 // NORMAL MODE PARAMETERS (MAXIMUN SETTINGS)
 #define MAX_THROTTLE 550
@@ -95,14 +95,14 @@
 #define SERVO2_RANGE 1400
 
 // Telemetry
-#define TELEMETRY_BATTERY 1
-#define TELEMETRY_ANGLE 1
+  //PDB #define TELEMETRY_BATTERY 1
+  //PDB #define TELEMETRY_ANGLE 1
 //#define TELEMETRY_DEBUG 1  // Dont use TELEMETRY_ANGLE and TELEMETRY_DEBUG at the same time!
 
 #define ZERO_SPEED 65535
 #define MAX_ACCEL 14      // Maximun motor acceleration (MAX RECOMMENDED VALUE: 20) (default:14)
 
-#define MICROSTEPPING 16   // 8 or 16 for 1/8 or 1/16 driver microstepping (default:16)
+#define MICROSTEPPING 32   // 8 or 16 for 1/8 or 1/16 driver microstepping (default:16)
 
 #define DEBUG 0   // 0 = No debug info (default) DEBUG 1 for console output
 
@@ -112,7 +112,7 @@
 #define RAD2GRAD 57.2957795
 #define GRAD2RAD 0.01745329251994329576923690768489
 
-String MAC;  // MAC address of Wifi module
+  //PDB String MAC;  // MAC address of Wifi module
 
 uint8_t cascade_control_loop_counter = 0;
 uint8_t loop_counter;       // To generate a medium loop 40Hz
@@ -161,6 +161,7 @@ float angle_offset = ANGLE_OFFSET;
 boolean positionControlMode = false;
 uint8_t mode;  // mode = 0 Normal mode, mode = 1 Pro mode (More agressive)
 
+//input speed to motors
 int16_t motor1;
 int16_t motor2;
 
@@ -179,37 +180,41 @@ int16_t actual_robot_speed_Old;
 float estimated_speed_filtered;    // Estimated robot speed
 
 // OSC output variables
-uint8_t OSCpage;
-uint8_t OSCnewMessage;
-float OSCfader[4];
-float OSCxy1_x;
-float OSCxy1_y;
-float OSCxy2_x;
-float OSCxy2_y;
-uint8_t OSCpush[4];
-uint8_t OSCtoggle[4];
-uint8_t OSCmove_mode;
-int16_t OSCmove_speed;
-int16_t OSCmove_steps1;
-int16_t OSCmove_steps2;
+//PDB Comment out all of this
+/* uint8_t OSCpage; */
+/* uint8_t OSCnewMessage; */
+/* float OSCfader[4]; */
+/* float OSCxy1_x; */
+/* float OSCxy1_y; */
+/* float OSCxy2_x; */
+/* float OSCxy2_y; */
+/* uint8_t OSCpush[4]; */
+/* uint8_t OSCtoggle[4]; */
+/* uint8_t OSCmove_mode; */
+/* int16_t OSCmove_speed; */
+/* int16_t OSCmove_steps1; */
+/* int16_t OSCmove_steps2; */
 
 
 // INITIALIZATION
 void setup()
 {
-  // STEPPER PINS ON JJROBOTS BROBOT BRAIN BOARD
-  pinMode(4, OUTPUT); // ENABLE MOTORS
-  pinMode(7, OUTPUT); // STEP MOTOR 1 PORTE,6
-  pinMode(8, OUTPUT); // DIR MOTOR 1  PORTB,4
-  pinMode(12, OUTPUT); // STEP MOTOR 2 PORTD,6
-  pinMode(5, OUTPUT); // DIR MOTOR 2  PORTC,6
-  digitalWrite(4, HIGH);  // Disbale motors
+  //PDB STEPPER PINS MODIFIED FROM JJROBOTS BROBOT BRAIN BOARD -->
+  // UDOO QUAD (Arduino Due)
+  pinMode(8, OUTPUT); // ENABLE MOTORS
+  pinMode(2, OUTPUT); // STEP MOTOR 1 PORTB25
+  pinMode(5, OUTPUT); // DIR MOTOR 1  PORTC25
+  pinMode(3, OUTPUT); // STEP MOTOR 2 PORTC28
+  pinMode(6, OUTPUT); // DIR MOTOR 2  PORTC24
+  digitalWrite(8, HIGH);  // Disable motors
+
+  //PDB Need to check if I need to change servo code or pins for Arduino Due
   pinMode(10, OUTPUT);  // Servo1 (arm)
   pinMode(13, OUTPUT);  // Servo2
 
   Serial.begin(115200); // Serial output to console
   Serial1.begin(115200);
-  OSC_init();
+  //PDB  OSC_init();
 
   // Initialize I2C bus (MPU6050 is connected via I2C)
   Wire.begin();
@@ -226,61 +231,62 @@ void setup()
   delay(500);
 
   // With the new ESP8266 WIFI MODULE WE NEED TO MAKE AN INITIALIZATION PROCESS
-  Serial.println("WIFI init");
-  Serial1.flush();
-  Serial1.print("+++");  // To ensure we exit the transparent transmision mode
-  delay(100);
-  ESPsendCommand("AT", "OK", 1);
-  ESPsendCommand("AT+RST", "OK", 2); // ESP Wifi module RESET
-  ESPwait("ready", 6);
-  ESPsendCommand("AT+GMR", "OK", 5);
+  //PDB Comment out all of this
+/*   Serial.println("WIFI init"); */
+/*   Serial1.flush(); */
+/*   Serial1.print("+++");  // To ensure we exit the transparent transmision mode */
+/*   delay(100); */
+/*   ESPsendCommand("AT", "OK", 1); */
+/*   ESPsendCommand("AT+RST", "OK", 2); // ESP Wifi module RESET */
+/*   ESPwait("ready", 6); */
+/*   ESPsendCommand("AT+GMR", "OK", 5); */
 
-#ifdef EXTERNAL_WIFI
-  ESPsendCommand("AT+CWQAP", "OK", 3);
-  ESPsendCommand("AT+CWMODE=1", "OK", 3);
-  //String auxCommand = (String)"AT+CWJAP="+WIFI_SSID+","+WIFI_PASSWORD;
-  char auxCommand[90] = "AT+CWJAP=\"";
-  strcat(auxCommand, WIFI_SSID);
-  strcat(auxCommand, "\",\"");
-  strcat(auxCommand, WIFI_PASSWORD);
-  strcat(auxCommand, "\"");
-  ESPsendCommand(auxCommand, "OK", 14);
-#ifdef WIFI_IP
-  strcpy(auxCommand, "AT+CIPSTA=\"");
-  strcat(auxCommand, WIFI_IP);
-  strcat(auxCommand, "\"");
-  ESPsendCommand(auxCommand, "OK", 4);
-#endif
-  ESPsendCommand("AT+CIPSTA?", "OK", 4);
-#else  // Deafault : we generate a wifi network
-  Serial1.println("AT+CIPSTAMAC?");
-  ESPgetMac();
-  //Serial.print("MAC:");
-  //Serial.println(MAC);
-  delay(200);
-  ESPsendCommand("AT+CWQAP", "OK", 3);
-  ESPsendCommand("AT+CWMODE=2", "OK", 3); // Soft AP mode
-  // Generate Soft AP. SSID=JJROBOTS, PASS=87654321
-  char *cmd =  "AT+CWSAP=\"JJROBOTS_XX\",\"87654321\",5,3";
-  // Update XX characters with MAC address (last 2 characters)
-  cmd[19] = MAC[10];
-  cmd[20] = MAC[11];
-  ESPsendCommand(cmd, "OK", 6);
-#endif
-  // Start UDP SERVER on port 2222, telemetry port 2223
-  Serial.println("Start UDP server");
-  ESPsendCommand("AT+CIPMUX=0", "OK", 3);  // Single connection mode
-  ESPsendCommand("AT+CIPMODE=1", "OK", 3); // Transparent mode
-  char Telemetry[80];
-  strcpy(Telemetry,"AT+CIPSTART=\"UDP\",\"");
-  strcat(Telemetry,TELEMETRY);
-  strcat(Telemetry,"\",2223,2222,0");
-  ESPsendCommand(Telemetry, "OK", 3); 
+/* #ifdef EXTERNAL_WIFI */
+/*   ESPsendCommand("AT+CWQAP", "OK", 3); */
+/*   ESPsendCommand("AT+CWMODE=1", "OK", 3); */
+/*   //String auxCommand = (String)"AT+CWJAP="+WIFI_SSID+","+WIFI_PASSWORD; */
+/*   char auxCommand[90] = "AT+CWJAP=\""; */
+/*   strcat(auxCommand, WIFI_SSID); */
+/*   strcat(auxCommand, "\",\""); */
+/*   strcat(auxCommand, WIFI_PASSWORD); */
+/*   strcat(auxCommand, "\""); */
+/*   ESPsendCommand(auxCommand, "OK", 14); */
+/* #ifdef WIFI_IP */
+/*   strcpy(auxCommand, "AT+CIPSTA=\""); */
+/*   strcat(auxCommand, WIFI_IP); */
+/*   strcat(auxCommand, "\""); */
+/*   ESPsendCommand(auxCommand, "OK", 4); */
+/* #endif */
+/*   ESPsendCommand("AT+CIPSTA?", "OK", 4); */
+/* #else  // Deafault : we generate a wifi network */
+/*   Serial1.println("AT+CIPSTAMAC?"); */
+/*   ESPgetMac(); */
+/*   //Serial.print("MAC:"); */
+/*   //Serial.println(MAC); */
+/*   delay(200); */
+/*   ESPsendCommand("AT+CWQAP", "OK", 3); */
+/*   ESPsendCommand("AT+CWMODE=2", "OK", 3); // Soft AP mode */
+/*   // Generate Soft AP. SSID=JJROBOTS, PASS=87654321 */
+/*   char *cmd =  "AT+CWSAP=\"JJROBOTS_XX\",\"87654321\",5,3"; */
+/*   // Update XX characters with MAC address (last 2 characters) */
+/*   cmd[19] = MAC[10]; */
+/*   cmd[20] = MAC[11]; */
+/*   ESPsendCommand(cmd, "OK", 6); */
+/* #endif */
+/*   // Start UDP SERVER on port 2222, telemetry port 2223 */
+/*   Serial.println("Start UDP server"); */
+/*   ESPsendCommand("AT+CIPMUX=0", "OK", 3);  // Single connection mode */
+/*   ESPsendCommand("AT+CIPMODE=1", "OK", 3); // Transparent mode */
+/*   char Telemetry[80]; */
+/*   strcpy(Telemetry,"AT+CIPSTART=\"UDP\",\""); */
+/*   strcat(Telemetry,TELEMETRY); */
+/*   strcat(Telemetry,"\",2223,2222,0"); */
+/*   ESPsendCommand(Telemetry, "OK", 3);  */
 
   // Calibrate gyros
   MPU6050_calibrate();
 
-  ESPsendCommand("AT+CIPSEND", ">", 2); // Start transmission (transparent mode)
+  //PDB  ESPsendCommand("AT+CIPSEND", ">", 2); // Start transmission (transparent mode)
 
   // Init servos
   Serial.println("Servo init");
@@ -289,6 +295,7 @@ void setup()
 
   // STEPPER MOTORS INITIALIZATION
   Serial.println("Stepers init");
+  // Change this for Arduino Due Timers: What are the key parameters/speeds to match?
   // MOTOR1 => TIMER1
   TCCR1A = 0;                       // Timer1 CTC mode 4, OCxA,B outputs disconnected
   TCCR1B = (1 << WGM12) | (1 << CS11); // Prescaler=8, => 2Mhz
@@ -305,7 +312,7 @@ void setup()
   delay(200);
 
   // Enable stepper drivers and TIMER interrupts
-  digitalWrite(4, LOW);   // Enable stepper drivers
+  digitalWrite(8, LOW);   // Enable stepper drivers
   // Enable TIMERs interrupts
   TIMSK1 |= (1 << OCIE1A); // Enable Timer1 interrupt
   TIMSK3 |= (1 << OCIE1A); // Enable Timer1 interrupt
@@ -334,6 +341,7 @@ void setup()
 #endif
   Serial.println("BROBOT by JJROBOTS v2.82");
   Serial.println("Start...");
+  //PDB What Timer does micros() use on Arduino Due?
   timer_old = micros();
 }
 
@@ -341,6 +349,7 @@ void setup()
 // MAIN LOOP
 void loop()
 {
+  //PDB: Here you will probably substitute logic that gets input from PS2 controller
   OSC_MsgRead();  // Read UDP OSC messages
   if (OSCnewMessage)
   {
@@ -408,7 +417,7 @@ void loop()
     Serial.println(steering);
 #endif
   } // End new OSC message
-
+  //PDB: Again, check what timer this uses
   timer_value = micros();
 
   // New IMU data?
@@ -501,14 +510,14 @@ void loop()
     if ((angle_adjusted < angle_ready) && (angle_adjusted > -angle_ready)) // Is robot ready (upright?)
     {
       // NORMAL MODE
-      digitalWrite(4, LOW);  // Motors enable
+      digitalWrite(8, LOW);  // Motors enable
       // NOW we send the commands to the motors
       setMotorSpeedM1(motor1);
       setMotorSpeedM2(motor2);
     }
     else   // Robot not ready (flat), angle > angle_ready => ROBOT OFF
     {
-      digitalWrite(4, HIGH);  // Disable motors
+      digitalWrite(8, HIGH);  // Disable motors
       setMotorSpeedM1(0);
       setMotorSpeedM2(0);
       PID_errorSum = 0;  // Reset PID I term

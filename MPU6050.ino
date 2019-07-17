@@ -479,6 +479,7 @@ float MPU6050_getAngle(float dt)
   // Complementary filter
   // We integrate the gyro rate value to obtain the angle in the short term and we take the accelerometer angle with a low pass filter in the long term...
   angle = 0.99 * (angle + x_gyro_value * dt) + 0.01 * accel_angle;  // Time constant = 0.99*0.01(100hz)/(1-0.99) = 0.99, around 1 sec.
+  //PDB  angle = 0.995 * (angle + x_gyro_value * dt) + 0.005 * accel_angle;  // Time constant = 0.99*0.005(200hz)/(1-0.99) = 0.99, around 1 sec.
 
   // Gyro bias correction
   // We supose that the long term mean of the gyro_value should tend to zero (gyro_offset). This means that the robot is not continuosly rotating.
@@ -559,6 +560,7 @@ void MPU6050_setup()
   MPU6050_write_reg(MPU6050_CONFIG, MPU6050_DLPF_10HZ);
   // Set Sample Rate to 100Hz
   MPU6050_write_reg(MPU6050_SMPLRT_DIV, 9);  // 100Hz : Sample Rate = 1000 / (1 + SMPLRT_DIV) Hz
+  //PDB  MPU6050_write_reg(MPU6050_SMPLRT_DIV, 4);  // 200Hz : Sample Rate = 1000 / (1 + SMPLRT_DIV) Hz
   // Data ready interrupt enable
   MPU6050_write_reg(MPU6050_INT_ENABLE, MPU6050_DATA_RDY_EN);
   // Clear the 'sleep' bit to start the sensor (and select clock source).

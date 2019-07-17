@@ -45,7 +45,7 @@
 //    PAGE2: PID adjustements [optional][dont touch if you dont know what you are doing...;-) ]
 
 #include <Wire.h>
-
+#include <DueTimer.h>
 // Uncomment this lines to connect to an external Wifi router (join an existing Wifi network)
 //#define EXTERNAL_WIFI
 //#define WIFI_SSID "YOUR_WIFI"
@@ -66,9 +66,13 @@
 #define MAX_TARGET_ANGLE_PRO 26   // Max recommended value: 32
 
 // Default control terms for EVO 2
+// #define KP 0.32       
+// #define KD 0.050
+//PDB testing new values for KP and KD
 #define KP 0.32       
-#define KD 0.050     
-#define KP_THROTTLE 0.080 
+#define KD 0.053
+
+#define KP_THROTTLE 0.080
 #define KI_THROTTLE 0.1 
 #define KP_POSITION 0.06  
 #define KD_POSITION 0.45  
@@ -80,11 +84,12 @@
 #define KP_THROTTLE_RAISEUP 0   // No speed control on raiseup
 #define KI_THROTTLE_RAISEUP 0.0
 
-#define MAX_CONTROL_OUTPUT 500
+//PDB MAX_CONTROL_OUTPUT constrains the max motor speed
+#define MAX_CONTROL_OUTPUT 100
 #define ITERM_MAX_ERROR 30   // Iterm windup constants for PI control 
 #define ITERM_MAX 10000
 
-#define ANGLE_OFFSET 0.0  // Offset angle for balance (to compensate robot own weight distribution)
+#define ANGLE_OFFSET 6.4  // Offset angle for balance (to compensate robot own weight distribution)
 
 // Servo definitions
 #define SERVO_AUX_NEUTRO 1500  // Servo neutral position
@@ -98,17 +103,22 @@
   //PDB #define TELEMETRY_BATTERY 1
   //PDB #define TELEMETRY_ANGLE 1
 //#define TELEMETRY_DEBUG 1  // Dont use TELEMETRY_ANGLE and TELEMETRY_DEBUG at the same time!
-
-#define ZERO_SPEED 65535
+//PDB: changed ZERO_SPEED to units of sec/step
+//PDB: rather than clock cycles
+//PDB: = 65535 cycles /2,000,000 cycles/sec
+//PDB: drawn from original numbers used in B-ROBOT
+//PDB: Then multiply by 1,000,000 to get microseconds
+#define ZERO_SPEED 32768
 #define MAX_ACCEL 14      // Maximun motor acceleration (MAX RECOMMENDED VALUE: 20) (default:14)
 
-#define MICROSTEPPING 32   // 8 or 16 for 1/8 or 1/16 driver microstepping (default:16)
+#define MICROSTEPPING 8   // 8 or 16 for 1/8 or 1/16 driver microstepping (default:16)
 
-#define DEBUG 0   // 0 = No debug info (default) DEBUG 1 for console output
+#define DEBUG 3   // 0 = No debug info (default) DEBUG 1 for console output
+#define TUNE 1   // 0 = No tuning mode (default) TUNE 1 to tune stability control PID
 
 // AUX definitions
-#define CLR(x,y) (x&=(~(1<<y)))
-#define SET(x,y) (x|=(1<<y))
+//#define CLR(x,y) (x&=(~(1<<y)))
+//#define SET(x,y) (x|=(1<<y))
 #define RAD2GRAD 57.2957795
 #define GRAD2RAD 0.01745329251994329576923690768489
 
@@ -122,6 +132,10 @@ int16_t BatteryValue;
 
 long timer_old;
 long timer_value;
+//PDB
+double timer6_period;
+double timer7_period;
+
 float debugVariable;
 float dt;
 
@@ -180,20 +194,20 @@ int16_t actual_robot_speed_Old;
 float estimated_speed_filtered;    // Estimated robot speed
 
 // OSC output variables
-//PDB Comment out all of this
-/* uint8_t OSCpage; */
-/* uint8_t OSCnewMessage; */
-/* float OSCfader[4]; */
-/* float OSCxy1_x; */
-/* float OSCxy1_y; */
-/* float OSCxy2_x; */
-/* float OSCxy2_y; */
-/* uint8_t OSCpush[4]; */
-/* uint8_t OSCtoggle[4]; */
-/* uint8_t OSCmove_mode; */
-/* int16_t OSCmove_speed; */
-/* int16_t OSCmove_steps1; */
-/* int16_t OSCmove_steps2; */
+//PDB Testing using some of these
+uint8_t OSCpage;
+uint8_t OSCnewMessage;
+float OSCfader[4];
+float OSCxy1_x;
+float OSCxy1_y;
+float OSCxy2_x;
+float OSCxy2_y;
+uint8_t OSCpush[4];
+uint8_t OSCtoggle[4];
+uint8_t OSCmove_mode;
+int16_t OSCmove_speed;
+int16_t OSCmove_steps1;
+int16_t OSCmove_steps2;
 
 
 // INITIALIZATION
@@ -209,11 +223,11 @@ void setup()
   digitalWrite(8, HIGH);  // Disable motors
 
   //PDB Need to check if I need to change servo code or pins for Arduino Due
-  pinMode(10, OUTPUT);  // Servo1 (arm)
-  pinMode(13, OUTPUT);  // Servo2
+  //PDB pinMode(10, OUTPUT);  // Servo1 (arm)
+  //PDB pinMode(13, OUTPUT);  // Servo2
 
-  Serial.begin(115200); // Serial output to console
-  Serial1.begin(115200);
+  Serial.begin(250000); // Serial output to console
+  //  Serial1.begin(115200);
   //PDB  OSC_init();
 
   // Initialize I2C bus (MPU6050 is connected via I2C)
@@ -289,59 +303,70 @@ void setup()
   //PDB  ESPsendCommand("AT+CIPSEND", ">", 2); // Start transmission (transparent mode)
 
   // Init servos
-  Serial.println("Servo init");
-  BROBOT_initServo();
-  BROBOT_moveServo1(SERVO_AUX_NEUTRO);
+  //PDB  Serial.println("Servo init");
+  //PDB  BROBOT_initServo();
+  //PDB  BROBOT_moveServo1(SERVO_AUX_NEUTRO);
 
   // STEPPER MOTORS INITIALIZATION
   Serial.println("Stepers init");
-  // Change this for Arduino Due Timers: What are the key parameters/speeds to match?
-  // MOTOR1 => TIMER1
-  TCCR1A = 0;                       // Timer1 CTC mode 4, OCxA,B outputs disconnected
-  TCCR1B = (1 << WGM12) | (1 << CS11); // Prescaler=8, => 2Mhz
-  OCR1A = ZERO_SPEED;               // Motor stopped
-  dir_M1 = 0;
-  TCNT1 = 0;
+  //PDB: Change this to use DueTimer library
+  // MOTOR1 => TIMER6
+  timer6_period = ZERO_SPEED;
 
-  // MOTOR2 => TIMER3
-  TCCR3A = 0;                       // Timer3 CTC mode 4, OCxA,B outputs disconnected
-  TCCR3B = (1 << WGM32) | (1 << CS31); // Prescaler=8, => 2Mhz
-  OCR3A = ZERO_SPEED;   // Motor stopped
+  dir_M1 = 0;
+
+  // MOTOR2 => TIMER7
+  timer7_period = ZERO_SPEED;
   dir_M2 = 0;
-  TCNT3 = 0;
+
   delay(200);
+  Serial.print("timer6_period: ");
+  Serial.println(timer6_period);
+  Serial.print("timer7_period: ");
+  Serial.println(timer7_period);
 
   // Enable stepper drivers and TIMER interrupts
   digitalWrite(8, LOW);   // Enable stepper drivers
+
+  Serial.println("Steppers enabled?");
+  Serial.println("NUM_TIMERS: ");
+  Serial.println(NUM_TIMERS);
+
   // Enable TIMERs interrupts
-  TIMSK1 |= (1 << OCIE1A); // Enable Timer1 interrupt
-  TIMSK3 |= (1 << OCIE1A); // Enable Timer1 interrupt
+  Timer6.attachInterrupt(runMotor1).start(timer6_period);
+  Timer7.attachInterrupt(runMotor2).start(timer7_period);
+
+  Serial.println("timer6 and timer7 started");
+
 
   // Little motor vibration and servo move to indicate that robot is ready
   for (uint8_t k = 0; k < 5; k++)
   {
     setMotorSpeedM1(5);
     setMotorSpeedM2(5);
-    BROBOT_moveServo1(SERVO_AUX_NEUTRO + 100);
-    BROBOT_moveServo2(SERVO2_NEUTRO + 100);
+    Serial.println("Motors forward!");
+    //PDB    BROBOT_moveServo1(SERVO_AUX_NEUTRO + 100);
+    //PDB    BROBOT_moveServo2(SERVO2_NEUTRO + 100);
     delay(200);
     setMotorSpeedM1(-5);
     setMotorSpeedM2(-5);
-    BROBOT_moveServo1(SERVO_AUX_NEUTRO - 100);
-    BROBOT_moveServo2(SERVO2_NEUTRO - 100);
+    Serial.println("Motors backward!");
+    //PDB    BROBOT_moveServo1(SERVO_AUX_NEUTRO - 100);
+    //PDB    BROBOT_moveServo2(SERVO2_NEUTRO - 100);
     delay(200);
+    
   }
-  BROBOT_moveServo1(SERVO_AUX_NEUTRO);
-  BROBOT_moveServo2(SERVO2_NEUTRO);
+  //PDB  BROBOT_moveServo1(SERVO_AUX_NEUTRO);
+  //PDB  BROBOT_moveServo2(SERVO2_NEUTRO);
 
- #if TELEMETRY_BATTERY==1
-  BatteryValue = BROBOT_readBattery(true);
-  Serial.print("BATT:");
-  Serial.println(BatteryValue);
-#endif
+/*PDB  #if TELEMETRY_BATTERY==1 */
+/*   BatteryValue = BROBOT_readBattery(true); */
+/*   Serial.print("BATT:"); */
+/*   Serial.println(BatteryValue); */
+/*PDB #endif */
   Serial.println("BROBOT by JJROBOTS v2.82");
   Serial.println("Start...");
-  //PDB What Timer does micros() use on Arduino Due?
+  //PDB Arduino Due micros() uses native clock ticks not timer
   timer_old = micros();
 }
 
@@ -350,37 +375,37 @@ void setup()
 void loop()
 {
   //PDB: Here you will probably substitute logic that gets input from PS2 controller
-  OSC_MsgRead();  // Read UDP OSC messages
-  if (OSCnewMessage)
-  {
-    OSCnewMessage = 0;
-    if (OSCpage == 1)   // Get commands from user (PAGE1 are user commands: throttle, steering...)
-    {
-      if (modifing_control_parameters)  // We came from the settings screen
-      {
-        OSCfader[0] = 0.5; // default neutral values
-        OSCfader[1] = 0.5;
-        OSCtoggle[0] = 0;  // Normal mode
-        mode = 0;
-        modifing_control_parameters = false;
-      }
+/*PDB   OSC_MsgRead();  // Read UDP OSC messages */
+/*   if (OSCnewMessage) */
+/*   { */
+/*     OSCnewMessage = 0; */
+/*     if (OSCpage == 1)   // Get commands from user (PAGE1 are user commands: throttle, steering...) */
+/*     { */
+/*       if (modifing_control_parameters)  // We came from the settings screen */
+/*       { */
+         OSCfader[0] = 0.5; // default neutral values
+         OSCfader[1] = 0.5;
+         OSCtoggle[0] = 0;  // Normal mode */
+/*       mode = 0; */
+/*         modifing_control_parameters = false; */
+/*       } */
 
-      if (OSCmove_mode)
-      {
-        //Serial.print("M ");
-        //Serial.print(OSCmove_speed);
-        //Serial.print(" ");
-        //Serial.print(OSCmove_steps1);
-        //Serial.print(",");
-        //Serial.println(OSCmove_steps2);
-        positionControlMode = true;
-        OSCmove_mode = false;
-        target_steps1 = steps1 + OSCmove_steps1;
-        target_steps2 = steps2 + OSCmove_steps2;
-      }
-      else
-      {
-        positionControlMode = false;
+/*       if (OSCmove_mode) */
+/*       { */
+/*         //Serial.print("M "); */
+/*         //Serial.print(OSCmove_speed); */
+/*         //Serial.print(" "); */
+/*         //Serial.print(OSCmove_steps1); */
+/*         //Serial.print(","); */
+/*         //Serial.println(OSCmove_steps2); */
+/*         positionControlMode = true; */
+/*         OSCmove_mode = false; */
+/*         target_steps1 = steps1 + OSCmove_steps1; */
+/*         target_steps2 = steps2 + OSCmove_steps2; */
+/*       } */
+/*       else */
+/*       { */
+/*         positionControlMode = false; */
         throttle = (OSCfader[0] - 0.5) * max_throttle;
         // We add some exponential on steering to smooth the center band
         steering = OSCfader[1] - 0.5;
@@ -388,37 +413,40 @@ void loop()
           steering = (steering * steering + 0.5 * steering) * max_steering;
         else
           steering = (-steering * steering + 0.5 * steering) * max_steering;
-      }
+/*       } */
 
-      if ((mode == 0) && (OSCtoggle[0]))
-      {
-        // Change to PRO mode
-        max_throttle = MAX_THROTTLE_PRO;
-        max_steering = MAX_STEERING_PRO;
-        max_target_angle = MAX_TARGET_ANGLE_PRO;
-        mode = 1;
-      }
-      if ((mode == 1) && (OSCtoggle[0] == 0))
-      {
-        // Change to NORMAL mode
-        max_throttle = MAX_THROTTLE;
-        max_steering = MAX_STEERING;
-        max_target_angle = MAX_TARGET_ANGLE;
-        mode = 0;
-      }
-    }
-    else if (OSCpage == 2) { // OSC page 2
-      // Check for new user control parameters
-      readControlParameters();
-    }
-#if DEBUG==1
-    Serial.print(throttle);
-    Serial.print(" ");
-    Serial.println(steering);
-#endif
-  } // End new OSC message
-  //PDB: Again, check what timer this uses
+/*       if ((mode == 0) && (OSCtoggle[0])) */
+/*       { */
+/*         // Change to PRO mode */
+/*         max_throttle = MAX_THROTTLE_PRO; */
+/*         max_steering = MAX_STEERING_PRO; */
+/*         max_target_angle = MAX_TARGET_ANGLE_PRO; */
+/*         mode = 1; */
+/*       } */
+/*       if ((mode == 1) && (OSCtoggle[0] == 0)) */
+/*       { */
+/*         // Change to NORMAL mode */
+/*         max_throttle = MAX_THROTTLE; */
+/*         max_steering = MAX_STEERING; */
+/*         max_target_angle = MAX_TARGET_ANGLE; */
+/*         mode = 0; */
+/*       } */
+/*     } */
+/*     else if (OSCpage == 2) { // OSC page 2 */
+/*       // Check for new user control parameters */
+/*       readControlParameters(); */
+/*     } */
+ #if DEBUG > 0
+  Serial.print("Throttle: ");
+  Serial.print(throttle);
+  Serial.print(" Steering: ");
+  Serial.println(steering);
+ #endif
+/*PDB   } // End new OSC message */
+
   timer_value = micros();
+  //Serial.print("timer_value: ");
+  //Serial.println(timer_value);
 
   // New IMU data?
   if (MPU6050_newData())
@@ -430,12 +458,16 @@ void loop()
     timer_old = timer_value;
 
     angle_adjusted_Old = angle_adjusted;
+
     // Get new orientation angle from IMU (MPU6050)
     float MPU_sensor_angle = MPU6050_getAngle(dt);
     angle_adjusted = MPU_sensor_angle + angle_offset;
-    if ((MPU_sensor_angle>-15)&&(MPU_sensor_angle<15))
-      angle_adjusted_filtered = angle_adjusted_filtered*0.99 + MPU_sensor_angle*0.01;
-      
+    //Seems like this should use angle_adjusted throughout
+    /* if ((MPU_sensor_angle>-15)&&(MPU_sensor_angle<15)) */
+    /*   angle_adjusted_filtered = angle_adjusted_filtered*0.99 + MPU_sensor_angle*0.01; */
+    if ((angle_adjusted > -15)&&(angle_adjusted < 15))
+      angle_adjusted_filtered = angle_adjusted_filtered*0.99 + angle_adjusted*0.01;
+
 #if DEBUG==1
     Serial.print(dt);
     Serial.print(" ");
@@ -476,15 +508,27 @@ void loop()
 
     // ROBOT SPEED CONTROL: This is a PI controller.
     //    input:user throttle(robot speed), variable: estimated robot speed, output: target robot angle to get the desired speed
+    //PDB: disable speed control for tuning of stability PID control
+#if TUNE==0 
     target_angle = speedPIControl(dt, estimated_speed_filtered, throttle, Kp_thr, Ki_thr);
     target_angle = constrain(target_angle, -max_target_angle, max_target_angle); // limited output
-
+#else 
+    target_angle = 0;
+#endif
 
 #if DEBUG==3
-    Serial.print(angle_adjusted);
-    Serial.print(" ");
-    Serial.print(estimated_speed_filtered);
-    Serial.print(" ");
+    Serial.print("dt: ");
+    Serial.print(dt);
+    Serial.print(", ");
+    Serial.print("angular_velocity: ");
+    Serial.println(angular_velocity);
+    Serial.print("angle_adjusted: ");
+    Serial.println(angle_adjusted);
+    Serial.print(",");
+    Serial.println(angle_adjusted_filtered);
+    Serial.print("estimated_speed_filtered ");
+    Serial.println(estimated_speed_filtered);
+    Serial.print("target_angle: ");
     Serial.println(target_angle);
 #endif
 
@@ -503,9 +547,9 @@ void loop()
     motor2 = constrain(motor2, -MAX_CONTROL_OUTPUT, MAX_CONTROL_OUTPUT);
 
     int angle_ready;
-    if (OSCpush[0])     // If we press the SERVO button we start to move
-      angle_ready = 82;
-    else
+    //PDB    if (OSCpush[0])     // If we press the SERVO button we start to move
+    //PDB      angle_ready = 82;
+    //PDB    else
       angle_ready = 74;  // Default angle
     if ((angle_adjusted < angle_ready) && (angle_adjusted > -angle_ready)) // Is robot ready (upright?)
     {
@@ -529,24 +573,24 @@ void loop()
       steps1 = 0;
       steps2 = 0;
       positionControlMode = false;
-      OSCmove_mode = false;
+      //PDB      OSCmove_mode = false;
       throttle = 0;
       steering = 0;
     }
 
     // Push1 Move servo arm
-    if (OSCpush[0])  // Move arm
-    {
-      if (angle_adjusted > -40)
-        BROBOT_moveServo1(SERVO_MIN_PULSEWIDTH);
-      else
-        BROBOT_moveServo1(SERVO_MAX_PULSEWIDTH);
-    }
-    else
-      BROBOT_moveServo1(SERVO_AUX_NEUTRO);
+    /*PDB if (OSCpush[0])  // Move arm */
+    /* { */
+    /*   if (angle_adjusted > -40) */
+    /*     BROBOT_moveServo1(SERVO_MIN_PULSEWIDTH); */
+    /*   else */
+    /*     BROBOT_moveServo1(SERVO_MAX_PULSEWIDTH); */
+    /* } */
+    /* else */
+    /*   BROBOT_moveServo1(SERVO_AUX_NEUTRO); */
 
-    // Servo2
-    BROBOT_moveServo2(SERVO2_NEUTRO + (OSCfader[2] - 0.5) * SERVO2_RANGE);
+    /* // Servo2 */
+    /*PDB BROBOT_moveServo2(SERVO2_NEUTRO + (OSCfader[2] - 0.5) * SERVO2_RANGE); */
 
     // Normal condition?
     if ((angle_adjusted < 56) && (angle_adjusted > -56))

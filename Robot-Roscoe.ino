@@ -65,11 +65,10 @@ double mapf(double x, double in_min, double in_max, double out_min, double out_m
  *   - 2e colmun: Stef?
  * replace pin numbers by the ones you use
  ******************************************************************/
-#define PS2_DAT        7  //14    
-#define PS2_CMD        6  //15
-#define PS2_SEL        5 //16
-#define PS2_CLK        4  //17
-#define MOTOR_PWM      12
+#define PS2_DAT       27 //Blue 
+#define PS2_CMD       26 //Orange
+#define PS2_SEL       25 //Yellow
+#define PS2_CLK       24 //White
 
 /******************************************************************
  * select modes of PS2 controller:
@@ -120,7 +119,7 @@ int leftStickY = 0;
 // #define KD 0.050
 //PDB testing new values for KP and KD
 #define KP 0.32       
-#define KD 0.053
+#define KD 0.052
 
 #define KP_THROTTLE 0.080
 #define KI_THROTTLE 0.1 

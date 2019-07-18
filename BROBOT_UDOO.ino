@@ -44,8 +44,58 @@
 //    PRO mode (PRO button). On PRO mode steering and throttle are more aggressive
 //    PAGE2: PID adjustements [optional][dont touch if you dont know what you are doing...;-) ]
 
+double mapf(double x, double in_min, double in_max, double out_min, double out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
 #include <Wire.h>
+// required for interrupts that drive stepper motor steps
 #include <DueTimer.h>
+// required for Playstation 2 controller
+
+#include <PS2X_lib.h>  //for v1.6
+
+
+
+// PS2X variables
+/******************************************************************
+ * set pins connected to PS2 controller:
+ *   - 1e column: original 
+ *   - 2e colmun: Stef?
+ * replace pin numbers by the ones you use
+ ******************************************************************/
+#define PS2_DAT        7  //14    
+#define PS2_CMD        6  //15
+#define PS2_SEL        5 //16
+#define PS2_CLK        4  //17
+#define MOTOR_PWM      12
+
+/******************************************************************
+ * select modes of PS2 controller:
+ *   - pressures = analog reading of push-butttons 
+ *   - rumble    = motor rumbling
+ * uncomment 1 of the lines for each mode selection
+ ******************************************************************/
+#define pressures   true
+//#define pressures   false
+#define rumble      true
+//#define rumble      false
+
+
+PS2X ps2x; // create PS2 Controller Class
+
+//right now, the library does NOT support hot pluggable controllers, meaning 
+//you must always either restart your Arduino after you conect the controller, 
+//or call config_gamepad(pins) again after connecting the controller.
+int ps2x_error = 0; 
+byte ps2x_type = 0;
+byte ps2x_vibrate = 0;
+
+int rightStickY = 0;
+int leftStickY = 0;
+
+
 // Uncomment this lines to connect to an external Wifi router (join an existing Wifi network)
 //#define EXTERNAL_WIFI
 //#define WIFI_SSID "YOUR_WIFI"
@@ -213,6 +263,11 @@ int16_t OSCmove_steps2;
 // INITIALIZATION
 void setup()
 {
+  //setup pins and settings: GamePad(clock, command, attention, data, Pressures?, Rumble?) check for error
+  ps2x_error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
+  
+  ps2x_type = ps2x.readType();
+
   //PDB STEPPER PINS MODIFIED FROM JJROBOTS BROBOT BRAIN BOARD -->
   // UDOO QUAD (Arduino Due)
   pinMode(8, OUTPUT); // ENABLE MOTORS
@@ -374,8 +429,47 @@ void setup()
 // MAIN LOOP
 void loop()
 {
+
+  if(ps2x_error == 1) //skip loop if no PS2 controller found
+    return; 
+  
   //PDB: Here you will probably substitute logic that gets input from PS2 controller
 /*PDB   OSC_MsgRead();  // Read UDP OSC messages */
+  ps2x.read_gamepad(false, vibrate);          //read PS2 controller and set large motor to spin at 'vibrate' speed
+
+  OSCtoggle[0] = 0;  // Normal mode */
+  rightStickY = ps2x.Analog(PSS_RY);
+  leftStickX = ps2x.Analog(PSS_LX);
+
+  if (rightStickY <= 100) {
+    OSCfader[0] = mapf(rightStickY,0,100,1.0,0.5);
+    //    motorRight->setSpeed(motorRightSpeed);
+    //    motorRight->run(FORWARD);
+  }
+  else if (rightStickY >= 155) {
+    OSCfader[0] = map(rightStickY,155,255,0.5,0.0);
+    //    motorRight->setSpeed(motorRightSpeed);
+    //    motorRight->run(BACKWARD);
+  }
+  else {
+    OSCfader[0] = 0.5; // default neutral value
+  }
+
+  if (leftStickX <= 100) {
+    OSCfader[1] = mapf(leftStickX,0,100,1.0,0.5);
+    //    motorLeft->setSpeed(motorLeftSpeed);
+    //    motorLeft->run(FORWARD);
+  }
+  else if (leftStickX >= 155) {
+    OSCfader[1] = mapf(leftStickX,155,255,0.5,0.0);
+    //    motorLeft->setSpeed(motorLeftSpeed);
+    //    motorLeft->run(BACKWARD);
+  }
+  else {
+    OSCfader[1] = 0.5; // default neutral value
+  }
+
+
 /*   if (OSCnewMessage) */
 /*   { */
 /*     OSCnewMessage = 0; */
@@ -383,9 +477,9 @@ void loop()
 /*     { */
 /*       if (modifing_control_parameters)  // We came from the settings screen */
 /*       { */
-         OSCfader[0] = 0.5; // default neutral values
-         OSCfader[1] = 0.5;
-         OSCtoggle[0] = 0;  // Normal mode */
+//         OSCfader[0] = 0.5; // default neutral values
+//         OSCfader[1] = 0.5;
+//         OSCtoggle[0] = 0;  // Normal mode */
 /*       mode = 0; */
 /*         modifing_control_parameters = false; */
 /*       } */
